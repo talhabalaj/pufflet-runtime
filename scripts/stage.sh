@@ -6,7 +6,8 @@
 #     every directory in Frameworks as a bundle, so they can't live there)
 #   Contents/Frameworks/*.dylib
 #     (no Vulkan ICD manifest: the loader falls back to libMoltenVK.dylib)
-#   Contents/Frameworks/renderer/dxmt/{wine,LICENSE,version}
+#   Contents/SharedSupport/renderer/dxmt/{wine,LICENSE,version}
+# which is also the final installed layout, so Pufflet Dev can run it directly.
 # Every private library gets an @rpath install name, and each Mach-O an rpath
 # to Frameworks relative to itself, so nothing depends on the build prefix.
 source "$(dirname "$0")/config.sh"
@@ -16,7 +17,7 @@ FW="$C/Frameworks"
 W="$C/SharedSupport/wine"
 
 rm -rf "$APP"
-mkdir -p "$W/bin" "$FW/renderer"
+mkdir -p "$W/bin" "$FW" "$C/SharedSupport/renderer"
 
 log "wine"
 rsync -a --exclude '*.a' --exclude '*.def' "$INSTALL/wine/lib/wine/" "$W/lib/wine/"
@@ -47,14 +48,14 @@ rsync -a --include '*.dylib' --exclude '*' "$DEPS/lib/" "$FW/"
 rsync -a --include '*.dylib' --exclude '*' "$DEPS/lib/gstreamer-1.0/" "$C/SharedSupport/gstreamer-1.0/"
 
 log "dxmt"
-mkdir -p "$FW/renderer/dxmt/wine"
+mkdir -p "$C/SharedSupport/renderer/dxmt/wine"
 for arch in x86_64-unix x86_64-windows i386-windows; do
-    rsync -a --exclude '*.a' "$INSTALL/dxmt/$arch/" "$FW/renderer/dxmt/wine/$arch/"
+    rsync -a --exclude '*.a' "$INSTALL/dxmt/$arch/" "$C/SharedSupport/renderer/dxmt/wine/$arch/"
 done
-cp "$INSTALL/dxmt/version" "$INSTALL/dxmt/LICENSE" "$FW/renderer/dxmt/"
+cp "$INSTALL/dxmt/version" "$INSTALL/dxmt/LICENSE" "$C/SharedSupport/renderer/dxmt/"
 # As in the Sikarugir runtime: DXMT's experimental d3d12 is shipped but not picked
 # up by name, so Wine's d3d12 (vkd3d) stays in use.
-mv "$FW/renderer/dxmt/wine/x86_64-windows/d3d12.dll" "$FW/renderer/dxmt/wine/x86_64-windows/_d3d12.dll"
+mv "$C/SharedSupport/renderer/dxmt/wine/x86_64-windows/d3d12.dll" "$C/SharedSupport/renderer/dxmt/wine/x86_64-windows/_d3d12.dll"
 
 log "install names"
 # Rewrites references to $DEPS/lib into @rpath and adds an rpath from the file
@@ -77,7 +78,7 @@ fix_macho() {
 while IFS= read -r f; do fix_macho "$f" . ; done < <(find "$FW" -maxdepth 1 -type f -name '*.dylib')
 while IFS= read -r f; do fix_macho "$f" ../../Frameworks; done < <(find "$C/SharedSupport/gstreamer-1.0" -type f)
 fix_macho "$W/bin/wineserver" ../../../Frameworks
-while IFS= read -r f; do fix_macho "$f" ../../../../../Frameworks; done < <(find "$W/lib/wine/x86_64-unix" "$FW/renderer/dxmt/wine/x86_64-unix" -type f)
+while IFS= read -r f; do fix_macho "$f" ../../../../../Frameworks; done < <(find "$W/lib/wine/x86_64-unix" "$C/SharedSupport/renderer/dxmt/wine/x86_64-unix" -type f)
 
 # Nothing may still point into the build tree.
 leaks="$(find "$APP" -type f -print0 | xargs -0 otool -lL 2>/dev/null | grep -v "^$APP" | grep -F "$WORK" || true)"

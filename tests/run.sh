@@ -7,7 +7,6 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="${1:-$ROOT/build/install/PuffletRuntime.app}"
 W="$APP/Contents/SharedSupport/wine"
 R="$APP/Contents/SharedSupport/renderer/dxmt/wine"
-[ -d "$R" ] || R="$APP/Contents/Frameworks/renderer/dxmt/wine"   # not yet packaged
 OUT="$(mktemp -d)"
 export WINEPREFIX="$OUT/prefix" WINEDEBUG=-all
 export WINEDLLPATH="$W/lib/wine/x86_64-windows:$W/lib/wine/i386-windows:$W/lib/wine/x86_64-unix"
