@@ -387,10 +387,17 @@ void prepend_dll_path(const char *path)
 static int add_dll_paths( const char *list, int count )
 {
     char *p, *path;
+    struct stat st;
 
     if (!list || !*list) return count;
     path = strdup( list );
-    for (p = strtok( path, ":" ); p; p = strtok( NULL, ":" )) dll_paths[count++] = strdup( p );
+    for (p = strtok( path, ":" ); p; p = strtok( NULL, ":" ))
+    {
+        /* a missing directory can't be passed on as WINEDLLDIRn, and a gap in that
+         * numbering would hide every later directory from the PE loader */
+        if (stat( p, &st ) || !S_ISDIR( st.st_mode )) continue;
+        dll_paths[count++] = strdup( p );
+    }
     free( path );
     return count;
 }
