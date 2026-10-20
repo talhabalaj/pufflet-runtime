@@ -2158,6 +2158,32 @@ static inline BOOL handle_interrupt( ucontext_t *sigcontext, EXCEPTION_RECORD *r
         rec->NumberParameters = 1;
         rec->ExceptionInformation[0] = context->Rax;
         break;
+    case 0x2e:
+        /* legacy system call gate, used by syscall stubs when user_shared_data->SystemCall is set */
+        if (CS_sig(sigcontext) == cs64_sel)
+        {
+            extern const void *__wine_syscall_dispatcher_prolog_end_ptr;
+            struct syscall_frame *frame = get_syscall_frame();
+
+            TRACE_(seh)( "int $0x2e, rax %#x, rip %p\n", (UINT)RAX_sig(sigcontext), (void *)RIP_sig(sigcontext) );
+            /* the dispatcher prolog subtracts 0xb from the return address */
+            frame->rip = RIP_sig(sigcontext) + 2 + 0xb;
+            frame->rcx = RIP_sig(sigcontext) + 2;
+            frame->eflags = EFL_sig(sigcontext);
+            frame->restore_flags = 0;
+            if (instrumentation_callback) frame->restore_flags |= RESTORE_FLAGS_INSTRUMENTATION;
+            RCX_sig(sigcontext) = (ULONG_PTR)frame;
+            R11_sig(sigcontext) = frame->eflags;
+            if (EFL_sig(sigcontext) & 0x100)
+            {
+                EFL_sig(sigcontext) &= ~0x100;  /* clear single-step flag */
+                frame->restore_flags |= CONTEXT_CONTROL;
+            }
+            RIP_sig(sigcontext) = (ULONG64)__wine_syscall_dispatcher_prolog_end_ptr;
+            leave_handler( sigcontext );
+            return TRUE;
+        }
+        return FALSE;
     default:
         return FALSE;
     }
