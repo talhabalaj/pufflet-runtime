@@ -23,14 +23,18 @@ jobs:
             autoconf automake libtool freetype
           xcodebuild -downloadComponent MetalToolchain
 
+      # Caches are saved right after their step, so a later failure or timeout
+      # doesn't throw away hours of library/LLVM builds.
       - name: Restore LLVM 15
-        uses: actions/cache@v4
+        id: llvm-cache
+        uses: actions/cache/restore@v4
         with:
           path: build/llvm-15-x86_64
-          key: llvm-15.0.7-x86_64-${{ hashFiles('scripts/build-dxmt.sh') }}
+          key: llvm-15.0.7-x86_64-v1
 
       - name: Restore libraries
-        uses: actions/cache@v4
+        id: deps-cache
+        uses: actions/cache/restore@v4
         with:
           path: build/deps
           key: deps-${{ hashFiles('scripts/build-deps.sh', 'scripts/config.sh', 'sources/freetype/**/meson.build', 'sources/gnutls/gnutls/NEWS', 'sources/glib/meson.build', 'sources/gstreamer/meson.build') }}
@@ -39,6 +43,20 @@ jobs:
         run: scripts/build-wine.sh tools
       - name: Libraries
         run: scripts/build-deps.sh
+      - name: Save libraries
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build/deps
+          key: ${{ steps.deps-cache.outputs.cache-primary-key }}
+      - name: LLVM 15
+        run: scripts/build-dxmt.sh llvm
+      - name: Save LLVM 15
+        if: steps.llvm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build/llvm-15-x86_64
+          key: ${{ steps.llvm-cache.outputs.cache-primary-key }}
       - name: Wine
         run: scripts/build-wine.sh
       - name: DXMT
