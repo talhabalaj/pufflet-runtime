@@ -64,6 +64,7 @@
 
 #ifdef __APPLE__
 #include <mach/mach.h>
+#include <sys/resource.h>
 #endif
 #ifdef __FreeBSD__
 #include <sys/thr.h>
@@ -2004,6 +2005,28 @@ BOOL get_thread_times(int unix_pid, int unix_tid, LARGE_INTEGER *kernel_time, LA
     }
     procstat_close(pstat);
     return ret;
+#elif defined(__APPLE__)
+    if (unix_tid == -1)
+    {
+        struct rusage usage;
+
+        if (unix_pid != getpid() || getrusage( RUSAGE_SELF, &usage )) return FALSE;
+        kernel_time->QuadPart = 10000000 * (ULONGLONG)usage.ru_stime.tv_sec + 10 * (ULONGLONG)usage.ru_stime.tv_usec;
+        user_time->QuadPart = 10000000 * (ULONGLONG)usage.ru_utime.tv_sec + 10 * (ULONGLONG)usage.ru_utime.tv_usec;
+    }
+    else
+    {
+        /* unix_tid is a Mach thread port name, only meaningful in our own task */
+        thread_basic_info_data_t info;
+        mach_msg_type_number_t count = THREAD_BASIC_INFO_COUNT;
+
+        if (unix_pid != getpid()) return FALSE;
+        if (thread_info( unix_tid, THREAD_BASIC_INFO, (thread_info_t)&info, &count ) != KERN_SUCCESS)
+            return FALSE;
+        kernel_time->QuadPart = 10000000 * (ULONGLONG)info.system_time.seconds + 10 * (ULONGLONG)info.system_time.microseconds;
+        user_time->QuadPart = 10000000 * (ULONGLONG)info.user_time.seconds + 10 * (ULONGLONG)info.user_time.microseconds;
+    }
+    return TRUE;
 #else
     static int once;
     if (!once++) FIXME("not implemented on this platform\n");
