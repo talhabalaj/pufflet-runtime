@@ -30,6 +30,8 @@ git switch main && git rebase crossover
 | ntdll: Emulate int $0x2e system calls on x86-64 | Protectors that copy Windows' syscall stubs execute `int 0x2e`, which Wine treated as an access violation (Car Parking Multiplayer 2). |
 | ntdll: Implement get_thread_times() on macOS | Thread times were a FIXME on macOS. |
 | ntdll: Point GSBASE at the TEB while running PE code on macOS | CrossOver reverts upstream's GSBASE switching, so `%gs`-relative TEB reads such as Mono's `%gs:0x68` (LastErrorValue) returned pthread data (Unity games). `tests/gs-teb.c` checks it. |
+| ntdll: Skip WINEDLLPATH directories that don't exist | A missing directory left a gap in `WINEDLLDIRn`, which hid every later one from the PE loader; a fresh prefix then failed to load kernel32. |
+| ntdll: Keep CrossOver's GSBASE scheme in D3DMetal processes | Apple's D3DMetal calls from PE code straight into native code that expects `%gs` to stay at pthread data, so when `WINEDLLPATH_D3DMETAL` is set the GSBASE switching is off (Unity games under D3DMetal keep the old limitation). |
 
 ## Building
 

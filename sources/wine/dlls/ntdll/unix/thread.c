@@ -1111,6 +1111,19 @@ static DECLSPEC_NORETURN void pthread_exit_wrapper( int status )
     close( ntdll_get_thread_data()->reply_fd );
     close( ntdll_get_thread_data()->request_fd );
 
+#if defined(__APPLE__) && defined(__x86_64__)
+    /* Without TEB gsbase switching the PEB is mirrored into the localtime field
+     * in %gs; remove it, or MacOS might try to free() the pointer and crash.
+     * That happens for processes that are using the alt loader for dock integration. */
+    {
+        extern char teb_gsbase;
+        if (!teb_gsbase)
+            __asm__ volatile (".byte 0x65\n\tmovq %q0,%c1"
+                              :
+                              : "r" (NULL), "n" (FIELD_OFFSET(TEB, Peb)));
+    }
+#endif
+
     pthread_exit( UIntToPtr(status) );
 }
 

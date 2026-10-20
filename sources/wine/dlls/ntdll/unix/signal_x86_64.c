@@ -71,6 +71,12 @@
  * Note that the dispatchers do the syscall directly to avoid using the stack.
  */
 extern void _thread_set_tsd_base(uint64_t);
+
+/* Whether %gs points at the TEB while running PE code. Apple's D3DMetal calls
+ * from PE code straight into native code, which expects %gs to stay at the
+ * pthread data, so D3DMetal processes keep CrossOver's scheme of mirroring the
+ * TEB fields it needs into the pthread data instead. Read by the dispatchers. */
+char teb_gsbase = 1;
 #endif
 
 #include "ntstatus.h"
@@ -925,8 +931,11 @@ static inline ucontext_t *init_handler( void *sigcontext )
     }
 #elif defined __APPLE__
     {
-        struct ntdll_thread_data *thread_data = (struct ntdll_thread_data *)&get_current_teb()->GdiTebBatch;
-        _thread_set_tsd_base( (uint64_t)((struct amd64_thread_data *)thread_data->cpu_data)->pthread_teb );
+        if (teb_gsbase)
+        {
+            struct ntdll_thread_data *thread_data = (struct ntdll_thread_data *)&get_current_teb()->GdiTebBatch;
+            _thread_set_tsd_base( (uint64_t)((struct amd64_thread_data *)thread_data->cpu_data)->pthread_teb );
+        }
 
         /* When in a syscall, CS will be the kernel's selector (0x07, SYSCALL_CS in xnu source)
          * instead of the user selector (cs64_sel: 0x2b, USER64_CS).
@@ -953,7 +962,7 @@ static inline void leave_handler( ucontext_t *sigcontext )
         !is_inside_syscall( RSP_sig(sigcontext) ))
         __asm__ volatile( "movw %0,%%fs" :: "r" (fs32_sel) );
 #elif defined __APPLE__
-    if (!is_inside_signal_stack( (void *)RSP_sig(sigcontext )) &&
+    if (teb_gsbase && !is_inside_signal_stack( (void *)RSP_sig(sigcontext )) &&
         !is_inside_syscall( RSP_sig(sigcontext )))
         _thread_set_tsd_base( (uint64_t)NtCurrentTeb() );
 #endif
@@ -1836,12 +1845,15 @@ __ASM_GLOBAL_FUNC( call_user_mode_callback,
                    "movw %ax,%fs\n"
                    "1:\n\t"
 #elif defined __APPLE__
+                   "cmpb $0," __ASM_NAME("teb_gsbase") "(%rip)\n\t"
+                   "je 8f\n\t"
                    "movq %rcx,%r10\n\t"
                    "movq %r13,%rdi\n\t"
                    "xorl %esi,%esi\n\t"
                    "movl $0x3000003,%eax\n\t"  /* _thread_set_tsd_base */
                    "syscall\n\t"
                    "movq %r10,%rcx\n\t"
+                   "8:\n\t"
 #endif
                    "movq 0x330(%r13),%r10\n\t" /* amd64_thread_data()->instrumentation_callback */
                    "movq (%r10),%r10\n\t"
@@ -3050,6 +3062,8 @@ void signal_init_process(void)
     signal_alloc_thread( NtCurrentTeb() );
 
 #ifdef __APPLE__
+    if (getenv( "WINEDLLPATH_D3DMETAL" )) teb_gsbase = 0;
+
     /* CW Hack 24256: We need the value of sysctl.proc_translated in signal
        handlers but sysctl[byname] is not signal-safe. */
     {
@@ -3124,6 +3138,16 @@ void init_syscall_frame( LPTHREAD_START_ROUTINE entry, void *arg, BOOL suspend, 
     sysarch( X86_64_SET_GSBASE, &teb );
 #elif defined (__APPLE__)
     thread_data->pthread_teb = mac_thread_gsbase();
+    if (!teb_gsbase)
+    {
+        __asm__ volatile ("movq %0,%%gs:%c1" :: "r" (teb->Tib.Self), "n" (FIELD_OFFSET(TEB, Tib.Self)));
+        __asm__ volatile ("movq %0,%%gs:%c1" :: "r" (teb->ThreadLocalStoragePointer), "n" (FIELD_OFFSET(TEB, ThreadLocalStoragePointer)));
+        __asm__ volatile ("movq %0,%%gs:%c1" :: "r" (teb->Peb), "n" (FIELD_OFFSET(TEB, Peb)));
+        /* alloc_tls_slot() needs to poke a value to an address relative to each
+           thread's gsbase.  Have each thread record its gsbase pointer into its
+           TEB so alloc_tls_slot() can find it. */
+        teb->Instrumentation[0] = thread_data->pthread_teb;
+    }
 #else
 # error Please define setting %gs for your architecture
 #endif
@@ -3339,11 +3363,14 @@ __ASM_GLOBAL_FUNC( __wine_syscall_dispatcher,
                    "leaq -0x98(%rbp),%rcx\n"
                    "2:\n\t"
 #elif defined __APPLE__
+                   "cmpb $0," __ASM_NAME("teb_gsbase") "(%rip)\n\t"
+                   "je 8f\n\t"
                    "movq 0x320(%r13),%rdi\n\t"     /* amd64_thread_data()->pthread_teb */
                    "xorl %esi,%esi\n\t"
                    "movl $0x3000003,%eax\n\t"      /* _thread_set_tsd_base */
                    "syscall\n\t"
                    "leaq -0x98(%rbp),%rcx\n"
+                   "8:\n\t"
 #endif
                    "ldmxcsr 0x33c(%r13)\n\t"       /* amd64_thread_data()->mxcsr */
                    "movl 0xb0(%rcx),%eax\n\t"      /* frame->syscall_id */
@@ -3391,6 +3418,8 @@ __ASM_GLOBAL_FUNC( __wine_syscall_dispatcher,
                    "movw %dx,%fs\n"
                    "1:\n\t"
 #elif defined __APPLE__
+                   "cmpb $0," __ASM_NAME("teb_gsbase") "(%rip)\n\t"
+                   "je 8f\n\t"
                    "movq %rax,%r8\n\t"
                    "movq %rcx,%rdx\n\t"
                    "movq %r13,%rdi\n\t"            /* teb */
@@ -3399,6 +3428,7 @@ __ASM_GLOBAL_FUNC( __wine_syscall_dispatcher,
                    "syscall\n\t"
                    "movq %rdx,%rcx\n\t"
                    "movq %r8,%rax\n\t"
+                   "8:\n\t"
 #endif
                    "movl 0xb4(%rcx),%edx\n\t"      /* frame->restore_flags */
                    "testl $0x48,%edx\n\t"          /* CONTEXT_FLOATING_POINT | CONTEXT_XSTATE */
@@ -3642,10 +3672,13 @@ __ASM_GLOBAL_FUNC( __wine_unix_call_dispatcher,
                    "syscall\n\t"
                    "2:\n\t"
 #elif defined __APPLE__
+                   "cmpb $0," __ASM_NAME("teb_gsbase") "(%rip)\n\t"
+                   "je 8f\n\t"
                    "movq 0x320(%r13),%rdi\n\t"     /* amd64_thread_data()->pthread_teb */
                    "xorl %esi,%esi\n\t"
                    "movl $0x3000003,%eax\n\t"      /* _thread_set_tsd_base */
                    "syscall\n\t"
+                   "8:\n\t"
 #endif
                    "ldmxcsr 0x33c(%r13)\n\t"       /* amd64_thread_data()->mxcsr */
                    "movq %r8,%rdi\n\t"             /* args */
@@ -3674,6 +3707,8 @@ __ASM_GLOBAL_FUNC( __wine_unix_call_dispatcher,
                    "movw %dx,%fs\n"
                    "1:\n\t"
 #elif defined __APPLE__
+                   "cmpb $0," __ASM_NAME("teb_gsbase") "(%rip)\n\t"
+                   "je 8f\n\t"
                    "movq %rax,%rdx\n\t"
                    "movq %rcx,%r14\n\t"
                    "movq %r13,%rdi\n\t"            /* teb */
@@ -3683,6 +3718,7 @@ __ASM_GLOBAL_FUNC( __wine_unix_call_dispatcher,
                    "movq %r14,%rcx\n\t"
                    "movq %rdx,%rax\n\t"
                    "movq 0x60(%rcx),%r14\n\t"
+                   "8:\n\t"
 #endif
                    "movq 0x58(%rcx),%r13\n\t"
                    "movq 0x28(%rcx),%rdi\n\t"
