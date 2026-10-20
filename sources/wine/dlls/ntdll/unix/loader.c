@@ -384,24 +384,34 @@ void prepend_dll_path(const char *path)
         dll_path_maxlen = path_len;
 }
 
+static int add_dll_paths( const char *list, int count )
+{
+    char *p, *path;
+
+    if (!list || !*list) return count;
+    path = strdup( list );
+    for (p = strtok( path, ":" ); p; p = strtok( NULL, ":" )) dll_paths[count++] = strdup( p );
+    free( path );
+    return count;
+}
+
 static void set_dll_path(void)
 {
-    char *p, *path = getenv( "WINEDLLPATH" );
+    /* WINEDLLPATH_PREPEND directories (e.g. a renderer such as DXMT or D3DMetal)
+     * are searched before the builtin dll directory, WINEDLLPATH ones after it. */
+    const char *prepend = getenv( "WINEDLLPATH_PREPEND" ), *path = getenv( "WINEDLLPATH" );
+    const char *p;
     int i, count = 0;
 
-    if (path) for (p = path, count = 1; *p; p++) if (*p == ':') count++;
+    if (prepend) for (p = prepend, count++; *p; p++) if (*p == ':') count++;
+    if (path) for (p = path, count++; *p; p++) if (*p == ':') count++;
 
     dll_paths = malloc( (count + 2) * sizeof(*dll_paths) );
-    count = 0;
+    count = add_dll_paths( prepend, 0 );
 
     if (!build_dir) dll_paths[count++] = dll_dir;
 
-    if (path)
-    {
-        path = strdup(path);
-        for (p = strtok( path, ":" ); p; p = strtok( NULL, ":" )) dll_paths[count++] = strdup( p );
-        free( path );
-    }
+    count = add_dll_paths( path, count );
 
     for (i = 0; i < count; i++) dll_path_maxlen = max( dll_path_maxlen, strlen(dll_paths[i]) );
     dll_paths[count] = NULL;
