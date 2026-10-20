@@ -1406,6 +1406,27 @@ static NSString* WineLocalizedString(unsigned int stringID)
             [window.queue postEvent:event];
             macdrv_release_event(event);
         }
+
+        /* Like a Windows taskbar button, the Dock icon and Cmd-Tab entry last only while the
+           program has windows: a launcher that hides itself and waits for the game it started
+           shouldn't keep one. Showing a window again brings it back to the foreground
+           (transformProcessToForeground). The delay rides out windows replaced during a mode
+           switch or fullscreen transition. */
+        [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(leaveForegroundIfWindowless) object:nil];
+        [self performSelector:@selector(leaveForegroundIfWindowless) withObject:nil afterDelay:3.0];
+    }
+
+    - (void) leaveForegroundIfWindowless
+    {
+        if ([NSApp activationPolicy] != NSApplicationActivationPolicyRegular || [NSApp isHidden])
+            return;
+        for (WineWindow* w in [NSApp windows])
+        {
+            /* Minimized windows live in the Dock and must stay restorable. */
+            if ([w isKindOfClass:[WineWindow class]] && ([w isVisible] || [w isMiniaturized]))
+                return;
+        }
+        [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
     }
 
     - (BOOL) isAnyWineWindowVisible
