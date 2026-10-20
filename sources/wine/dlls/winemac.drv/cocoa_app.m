@@ -363,8 +363,9 @@ static NSString* WineLocalizedString(unsigned int stringID)
                 title = [NSString stringWithFormat:WineLocalizedString(STRING_MENU_ITEM_QUIT_APPNAME), bundleName];
             else
                 title = WineLocalizedString(STRING_MENU_ITEM_QUIT);
+            /* Plain Cmd-Q, like any Mac app (CrossOver uses Option-Cmd-Q). Quitting still asks
+               the program first (WM_QUERYENDSESSION), and Windows programs never see Cmd. */
             item = [submenu addItemWithTitle:title action:@selector(terminate:) keyEquivalent:@"q"];
-            [item setKeyEquivalentModifierMask:NSEventModifierFlagCommand | NSEventModifierFlagOption];
             item = [[[NSMenuItem alloc] init] autorelease];
             [item setTitle:WineLocalizedString(STRING_MENU_WINE)];
             [item setSubmenu:submenu];
