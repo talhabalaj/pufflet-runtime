@@ -1,7 +1,7 @@
 #!/bin/bash
 # Assembles $INSTALL/PuffletRuntime.app in the layout Pufflet's
 # scripts/ci/package-runtime.sh prepare takes as SOURCE_APP:
-#   Contents/SharedSupport/wine/{bin,lib/wine,share/wine}
+#   Contents/SharedSupport/wine/{bin,lib/wine,share/wine (with mono, gecko)}
 #   Contents/SharedSupport/gstreamer-1.0/  (GStreamer plugins; codesign treats
 #     every directory in Frameworks as a bundle, so they can't live there)
 #   Contents/Frameworks/*.dylib
@@ -25,6 +25,20 @@ cp "$INSTALL/wine/bin/wineserver" "$W/bin/"
 # CrossOver's loader looks for ntdll.so next to its resolved path.
 ln -s ../lib/wine/x86_64-unix/wine "$W/bin/wine"
 git -C "$ROOT" describe --always --dirty > "$W/version" 2>/dev/null || true
+
+log "wine-mono and wine-gecko"
+# WineHQ's prebuilt add-ons, at the versions this Wine asks for (appwiz.cpl/addons.c);
+# without them creating a prefix stops at an installer dialog.
+fetch https://dl.winehq.org/wine/wine-mono/10.4.1/wine-mono-10.4.1-x86.tar.xz \
+    a16606ef0724202e6a6848ece6e0cbba64d11e2f11aefe744af1d93c6d9f99bb wine-mono-10.4.1-x86.tar.xz
+fetch https://dl.winehq.org/wine/wine-gecko/2.47.4/wine-gecko-2.47.4-x86.tar.xz \
+    2cfc8d5c948602e21eff8a78613e1826f2d033df9672cace87fed56e8310afb6 wine-gecko-2.47.4-x86.tar.xz
+fetch https://dl.winehq.org/wine/wine-gecko/2.47.4/wine-gecko-2.47.4-x86_64.tar.xz \
+    fd88fc7e537d058d7a8abf0c1ebc90c574892a466de86706a26d254710a82814 wine-gecko-2.47.4-x86_64.tar.xz
+mkdir -p "$W/share/wine/mono" "$W/share/wine/gecko"
+tar -xf "$DL/wine-mono-10.4.1-x86.tar.xz" -C "$W/share/wine/mono"
+tar -xf "$DL/wine-gecko-2.47.4-x86.tar.xz" -C "$W/share/wine/gecko"
+tar -xf "$DL/wine-gecko-2.47.4-x86_64.tar.xz" -C "$W/share/wine/gecko"
 
 log "libraries"
 # Shared libraries and their soname symlinks, without static or libtool files.

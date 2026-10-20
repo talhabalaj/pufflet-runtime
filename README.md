@@ -60,7 +60,8 @@ don't build as shipped, so those come from upstream releases instead (nettle
 that builds against nettle 3.10), as does gst-libav 1.24.13 (1.24.4 predates
 FFmpeg 7). The rest are pinned, checksummed releases: SDL2, libinotify-kqueue,
 the Vulkan loader, FFmpeg 7.1 (LGPL configuration), MoltenVK 1.4.1, LLVM 15 and
-DXMT. Every download's checksum is in the scripts.
+DXMT. Every download's checksum is in the scripts. Wine Mono 10.4.1 and Wine
+Gecko 2.47.4 are WineHQ's prebuilt add-ons, the versions this Wine asks for.
 
 ## License
 

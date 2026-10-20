@@ -9,7 +9,7 @@ W="$APP/Contents/SharedSupport/wine"
 R="$APP/Contents/SharedSupport/renderer/dxmt/wine"
 [ -d "$R" ] || R="$APP/Contents/Frameworks/renderer/dxmt/wine"   # not yet packaged
 OUT="$(mktemp -d)"
-export WINEPREFIX="$OUT/prefix" WINEDEBUG=-all WINEDLLOVERRIDES="mscoree,mshtml="
+export WINEPREFIX="$OUT/prefix" WINEDEBUG=-all
 export WINEDLLPATH="$W/lib/wine/x86_64-windows:$W/lib/wine/i386-windows:$W/lib/wine/x86_64-unix"
 export WINEDLLPATH_DXMT="$R" WINEDLLPATH_PREPEND="$R" WINEESYNC=1 WINEMSYNC=1 WINEBOOT_HIDE_DIALOG=1
 export DYLD_FALLBACK_LIBRARY_PATH="$W/lib:$APP/Contents/Frameworks:/usr/lib"
