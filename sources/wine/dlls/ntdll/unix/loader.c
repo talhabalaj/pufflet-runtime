@@ -650,17 +650,26 @@ fail:
 
 /* A launcher can give a program its own macOS app identity (Dock, Cmd-Tab, activation,
  * Game Mode) by providing $WINEAPPBUNDLES/<exe name>.app, whose Contents/MacOS/wine is a
- * link to the wine loader with ntdll.so next to it. */
+ * link to the wine loader with ntdll.so next to it.
+ *
+ * Programs a bundled program starts belong to it: a game's own launcher may run the real
+ * game as an EXE with another name or somewhere else (PopCap games copy themselves to
+ * temp\popcapgame1.exe). Such a child, without a bundle of its own, runs through its
+ * parent's bundle, passed down in WINEAPPBUNDLE_LOADER. */
 static char *find_app_bundle_loader(const char *app_name)
 {
-    const char *dir = getenv("WINEAPPBUNDLES");
+    const char *dir = getenv("WINEAPPBUNDLES"), *inherited = getenv("WINEAPPBUNDLE_LOADER");
     char *path;
 
     if (!dir || !*dir) return NULL;
     if (asprintf(&path, "%s/%s.app/Contents/MacOS/wine", dir, app_name) < 0) return NULL;
-    if (!access(path, X_OK)) return path;
-    free(path);
-    return NULL;
+    if (access(path, X_OK))
+    {
+        free(path);
+        if (!inherited || !*inherited || access(inherited, X_OK) || !(path = strdup(inherited))) return NULL;
+    }
+    setenv("WINEAPPBUNDLE_LOADER", path, 1);
+    return path;
 }
 
 static void replace_wineloader_path_with_link(char **wineloader_path, const char *image_path)
