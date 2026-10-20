@@ -2,7 +2,9 @@
 # Assembles $INSTALL/PuffletRuntime.app in the layout Pufflet's
 # scripts/ci/package-runtime.sh prepare takes as SOURCE_APP:
 #   Contents/SharedSupport/wine/{bin,lib/wine,share/wine}
-#   Contents/Frameworks/*.dylib, gstreamer-1.0/
+#   Contents/SharedSupport/gstreamer-1.0/  (GStreamer plugins; codesign treats
+#     every directory in Frameworks as a bundle, so they can't live there)
+#   Contents/Frameworks/*.dylib
 #     (no Vulkan ICD manifest: the loader falls back to libMoltenVK.dylib)
 #   Contents/Frameworks/renderer/dxmt/{wine,LICENSE,version}
 # Every private library gets an @rpath install name, and each Mach-O an rpath
@@ -27,8 +29,8 @@ git -C "$ROOT" describe --always --dirty > "$W/version" 2>/dev/null || true
 log "libraries"
 # Shared libraries and their soname symlinks, without static or libtool files.
 rsync -a --include '*.dylib' --exclude '*' "$DEPS/lib/" "$FW/"
-rsync -a --include '*.dylib' --exclude '*' "$DEPS/lib/gstreamer-1.0/" "$FW/gstreamer-1.0/"
-# GStreamer finds plugins next to libgstreamer (dladdr) and scans them in-process.
+# Pufflet points GST_PLUGIN_SYSTEM_PATH_1_0 here; plugins are scanned in-process.
+rsync -a --include '*.dylib' --exclude '*' "$DEPS/lib/gstreamer-1.0/" "$C/SharedSupport/gstreamer-1.0/"
 
 log "dxmt"
 mkdir -p "$FW/renderer/dxmt/wine"
@@ -59,7 +61,7 @@ fix_macho() {
     install_name_tool "${args[@]}" "$file" 2>&1 | grep -v "invalidate the code signature" || true
 }
 while IFS= read -r f; do fix_macho "$f" . ; done < <(find "$FW" -maxdepth 1 -type f -name '*.dylib')
-while IFS= read -r f; do fix_macho "$f" .. ; done < <(find "$FW/gstreamer-1.0" -type f)
+while IFS= read -r f; do fix_macho "$f" ../../Frameworks; done < <(find "$C/SharedSupport/gstreamer-1.0" -type f)
 fix_macho "$W/bin/wineserver" ../../../Frameworks
 while IFS= read -r f; do fix_macho "$f" ../../../../../Frameworks; done < <(find "$W/lib/wine/x86_64-unix" "$FW/renderer/dxmt/wine/x86_64-unix" -type f)
 
