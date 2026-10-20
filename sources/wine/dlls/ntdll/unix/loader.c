@@ -648,12 +648,28 @@ fail:
     return NULL;
 }
 
+/* A launcher can give a program its own macOS app identity (Dock, Cmd-Tab, activation,
+ * Game Mode) by providing $WINEAPPBUNDLES/<exe name>.app, whose Contents/MacOS/wine is a
+ * link to the wine loader with ntdll.so next to it. */
+static char *find_app_bundle_loader(const char *app_name)
+{
+    const char *dir = getenv("WINEAPPBUNDLES");
+    char *path;
+
+    if (!dir || !*dir) return NULL;
+    if (asprintf(&path, "%s/%s.app/Contents/MacOS/wine", dir, app_name) < 0) return NULL;
+    if (!access(path, X_OK)) return path;
+    free(path);
+    return NULL;
+}
+
 static void replace_wineloader_path_with_link(char **wineloader_path, const char *image_path)
 {
     char *app_name = extract_exe_name(image_path);
     if (app_name)
     {
-        char *preloader_path = create_preloader_link(*wineloader_path, app_name);
+        char *preloader_path = find_app_bundle_loader(app_name);
+        if (!preloader_path) preloader_path = create_preloader_link(*wineloader_path, app_name);
         if (preloader_path)
         {
             free(*wineloader_path);
